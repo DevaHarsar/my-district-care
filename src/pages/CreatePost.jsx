@@ -41,8 +41,12 @@ export default function CreatePost() {
   const mapsUrl = googleMapsLink(lat, lng)
 
   const handleFileChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0])
+    const f = e.target.files && e.target.files[0]
+    if (f) {
+      setError(null)
+      setProgress(0)
+      setFile(f)
+      e.target.value = ''
     }
   }
 
@@ -61,7 +65,8 @@ export default function CreatePost() {
   const uploadImage = () => {
     if (!file) return Promise.resolve({ imageURL: '', imageStoragePath: '' })
     return new Promise((resolve, reject) => {
-      const url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`
+      const url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`
+
       const formData = new FormData()
       formData.append('file', file)
       formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET)
@@ -88,9 +93,9 @@ export default function CreatePost() {
           } else {
             try {
               const res = JSON.parse(xhr.responseText)
-              reject(new Error(res.error?.message || 'Cloudinary upload failed'))
+              reject(new Error(res.error?.message || `Cloudinary upload failed (status ${xhr.status})`))
             } catch {
-              reject(new Error('Cloudinary upload failed'))
+              reject(new Error(`Cloudinary upload failed (status ${xhr.status}): ${xhr.responseText || 'No response'}`))
             }
           }
         }
@@ -156,8 +161,13 @@ export default function CreatePost() {
           </FormControl>
           <FormControl>
             <FormLabel>Image (camera or file)</FormLabel>
-            <Input type="file" accept="image/*" capture="environment" onChange={handleFileChange} />
+            <Input type="file" accept="image/*" onChange={handleFileChange} />
             {progress > 0 && <Progress value={progress} mt={2} />}
+            {file && (
+              <Text fontSize="sm" mt={1} color="gray.600">
+                Selected: {file.name} ({file.type || 'unknown type'}, {(file.size / 1024 / 1024).toFixed(2)} MB)
+              </Text>
+            )}
           </FormControl>
           <HStack align="start">
             <FormControl isRequired>
