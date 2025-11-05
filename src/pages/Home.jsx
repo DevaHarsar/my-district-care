@@ -16,12 +16,17 @@ import {
   AlertIcon,
   Box,
   Heading,
+  Stat,
+  StatLabel,
+  StatNumber,
   Text,
   VStack,
   HStack,
   Button,
   Divider,
   Icon,
+  Skeleton,
+  SkeletonText,
 } from "@chakra-ui/react";
 import { keyframes } from "@emotion/react";
 import { FaHandsHelping, FaMapMarkerAlt, FaRegLightbulb } from "react-icons/fa";
@@ -33,6 +38,12 @@ export default function Home({ showIntro = true }) {
   const [error, setError] = useState(null);
   const [page, setPage] = useState(1);
   const [totalDocs, setTotalDocs] = useState(0);
+  const [counts, setCounts] = useState({
+    total: 0,
+    pending: 0,
+    in_progress: 0,
+    resolved: 0,
+  });
   const [lastVisible, setLastVisible] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
@@ -45,6 +56,13 @@ export default function Home({ showIntro = true }) {
       q,
       (snap) => {
         setTotalDocs(snap.size);
+        // compute status counts across all posts for the feed
+        const c = { total: snap.size, pending: 0, in_progress: 0, resolved: 0 };
+        snap.docs.forEach((d) => {
+          const data = d.data();
+          if (data?.status && c[data.status] !== undefined) c[data.status]++;
+        });
+        setCounts(c);
         setError(null);
       },
       (err) => setError(err.message)
@@ -88,12 +106,12 @@ export default function Home({ showIntro = true }) {
     fetchPage(1);
   }, []);
 
-  // reset page when posts change or clamp page to available pages
+  // reset page when total docs change or clamp page to available pages
   useEffect(() => {
-    const totalPages = Math.max(1, Math.ceil(posts.length / PAGE_SIZE));
+    const totalPages = Math.max(1, Math.ceil(totalDocs / PAGE_SIZE));
     if (page > totalPages) setPage(totalPages);
-    if (posts.length > 0 && page === 0) setPage(1);
-  }, [posts.length]);
+    if (totalDocs > 0 && page === 0) setPage(1);
+  }, [totalDocs, PAGE_SIZE]);
 
   return (
     <Container maxW="container.lg" py={10}>
@@ -259,9 +277,65 @@ export default function Home({ showIntro = true }) {
         </>
       )}
 
-      <Heading size="md" mb={5}>
-        Recent Reports
-      </Heading>
+      <HStack justify="space-between" mb={5} align="center" wrap="wrap" gap={2}>
+        <Heading size="md">Recent Reports</Heading>
+
+        <HStack spacing={{ base: 3, md: 6 }} align="center">
+          <Stat textAlign="center">
+            <StatLabel
+              bgGradient="linear(to-r, purple.500, purple.700)"
+              bgClip="text"
+              fontWeight="bold"
+            >
+              Total
+            </StatLabel>
+            <StatNumber color="black" fontWeight="semibold">
+              {counts.total}
+            </StatNumber>
+          </Stat>
+
+          <Stat textAlign="center">
+            <StatLabel
+              bgGradient="linear(to-r, purple.500, purple.700)"
+              bgClip="text"
+              fontWeight="bold"
+            >
+              Pending
+            </StatLabel>
+            <StatNumber color="black" fontWeight="semibold">
+              {counts.pending}
+            </StatNumber>
+          </Stat>
+
+          <Stat textAlign="center">
+            <StatLabel
+              bgGradient="linear(to-r, purple.500, purple.700)"
+              bgClip="text"
+              fontWeight="bold"
+              whiteSpace="nowrap"
+              title="In Progress"
+            >
+              In Progress
+            </StatLabel>
+            <StatNumber color="black" fontWeight="semibold">
+              {counts.in_progress}
+            </StatNumber>
+          </Stat>
+
+          <Stat textAlign="center">
+            <StatLabel
+              bgGradient="linear(to-r, purple.500, purple.700)"
+              bgClip="text"
+              fontWeight="bold"
+            >
+              Resolved
+            </StatLabel>
+            <StatNumber color="black" fontWeight="semibold">
+              {counts.resolved}
+            </StatNumber>
+          </Stat>
+        </HStack>
+      </HStack>
 
       {error && (
         <Alert status="error" mb={4}>
@@ -270,7 +344,23 @@ export default function Home({ showIntro = true }) {
         </Alert>
       )}
 
-      {posts.length === 0 ? (
+      {isLoading ? (
+        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={6}>
+          {Array.from({ length: PAGE_SIZE }).map((_, i) => (
+            <Box
+              key={`skeleton-${i}`}
+              borderWidth="1px"
+              borderRadius="md"
+              overflow="hidden"
+              bg="white"
+              p={4}
+            >
+              <Skeleton height="180px" mb={3} borderRadius="md" />
+              <SkeletonText mt="4" noOfLines={3} spacing="4" />
+            </Box>
+          ))}
+        </SimpleGrid>
+      ) : posts.length === 0 ? (
         <Box textAlign="center" py={10} color="gray.500">
           No reports yet. Be the first to make a difference!
         </Box>
@@ -278,11 +368,9 @@ export default function Home({ showIntro = true }) {
         <>
           {/* Paginated grid */}
           <SimpleGrid columns={{ base: 1, md: 2 }} spacing={6}>
-            {posts
-              .slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
-              .map((post) => (
-                <PostCard key={post.id} post={post} />
-              ))}
+            {posts.map((post) => (
+              <PostCard key={post.id} post={post} />
+            ))}
           </SimpleGrid>
 
           {/* Truncated Pagination controls */}
@@ -359,12 +447,6 @@ export default function Home({ showIntro = true }) {
                 Next
               </Button>
             </HStack>
-          )}
-
-          {isLoading && (
-            <Box textAlign="center" mt={4}>
-              <Text color="gray.500">Loading...</Text>
-            </Box>
           )}
         </>
       )}

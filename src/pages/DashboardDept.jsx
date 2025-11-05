@@ -32,6 +32,8 @@ import {
   AlertIcon,
   Text,
   Link,
+  Skeleton,
+  SkeletonText,
 } from "@chakra-ui/react";
 import PostCard from "../components/PostCard";
 import {
@@ -126,11 +128,11 @@ export default function DashboardDept({ fixedDept }) {
     fetchPage(1);
   }, [dept]);
 
-  // clamp page when posts change
+  // clamp page when total docs change
   useEffect(() => {
-    const totalPages = Math.max(1, Math.ceil(posts.length / PAGE_SIZE));
+    const totalPages = Math.max(1, Math.ceil(totalDocs / PAGE_SIZE));
     if (page > totalPages) setPage(totalPages);
-  }, [posts.length, PAGE_SIZE]);
+  }, [totalDocs, PAGE_SIZE]);
 
   useEffect(() => {
     getCurrentPosition()
@@ -274,10 +276,25 @@ export default function DashboardDept({ fixedDept }) {
         </Alert>
       )}
 
-      <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-        {postsWithDistance
-          .slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
-          .map((p) => (
+      {isLoading ? (
+        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+          {Array.from({ length: PAGE_SIZE }).map((_, i) => (
+            <Box
+              key={`skeleton-${i}`}
+              borderWidth="1px"
+              borderRadius="md"
+              overflow="hidden"
+              bg="white"
+              p={4}
+            >
+              <Skeleton height="160px" mb={3} borderRadius="md" />
+              <SkeletonText mt="4" noOfLines={3} spacing="4" />
+            </Box>
+          ))}
+        </SimpleGrid>
+      ) : (
+        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+          {postsWithDistance.map((p) => (
             <Box
               key={p.id}
               borderWidth="1px"
@@ -319,7 +336,8 @@ export default function DashboardDept({ fixedDept }) {
               )}
             </Box>
           ))}
-      </SimpleGrid>
+        </SimpleGrid>
+      )}
 
       {/* Truncated Pagination controls */}
       {totalDocs > PAGE_SIZE && (
@@ -395,11 +413,7 @@ export default function DashboardDept({ fixedDept }) {
         </HStack>
       )}
 
-      {isLoading && (
-        <Box textAlign="center" mt={4}>
-          <Text color="gray.500">Loading...</Text>
-        </Box>
-      )}
+      {/* loading state handled inline with skeletons above */}
     </Container>
   );
 }
