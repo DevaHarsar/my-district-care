@@ -1,5 +1,13 @@
 import { useEffect, useState } from "react";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import {
+  collection,
+  onSnapshot,
+  orderBy,
+  query,
+  limit,
+  startAfter,
+  getDocs,
+} from "firebase/firestore";
 import { db } from "../firebase";
 import {
   SimpleGrid,
@@ -23,20 +31,69 @@ import { useNavigate } from "react-router-dom";
 export default function Home({ showIntro = true }) {
   const [posts, setPosts] = useState([]);
   const [error, setError] = useState(null);
+  const [page, setPage] = useState(1);
+  const [totalDocs, setTotalDocs] = useState(0);
+  const [lastVisible, setLastVisible] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const PAGE_SIZE = 6; // show 6 items per page by default
 
+  // Get total count of documents
   useEffect(() => {
-    const q = query(collection(db, "posts"), orderBy("createdAt", "desc"));
+    const q = query(collection(db, "posts"));
     const unsub = onSnapshot(
       q,
       (snap) => {
-        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setPosts(list);
+        setTotalDocs(snap.size);
+        setError(null);
       },
       (err) => setError(err.message)
     );
     return () => unsub();
   }, []);
+
+  // Fetch paginated data
+  const fetchPage = async (pageNum, cursor = null) => {
+    setIsLoading(true);
+    try {
+      let q = query(
+        collection(db, "posts"),
+        orderBy("createdAt", "desc"),
+        limit(PAGE_SIZE)
+      );
+
+      if (cursor) {
+        q = query(
+          collection(db, "posts"),
+          orderBy("createdAt", "desc"),
+          startAfter(cursor),
+          limit(PAGE_SIZE)
+        );
+      }
+
+      const snapshot = await getDocs(q);
+      const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setPosts(list);
+      setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
+      setError(null);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fetch initial page
+  useEffect(() => {
+    fetchPage(1);
+  }, []);
+
+  // reset page when posts change or clamp page to available pages
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(posts.length / PAGE_SIZE));
+    if (page > totalPages) setPage(totalPages);
+    if (posts.length > 0 && page === 0) setPage(1);
+  }, [posts.length]);
 
   return (
     <Container maxW="container.lg" py={10}>
@@ -218,11 +275,98 @@ export default function Home({ showIntro = true }) {
           No reports yet. Be the first to make a difference!
         </Box>
       ) : (
-        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={6}>
-          {posts.map((post) => (
-            <PostCard key={post.id} post={post} />
-          ))}
-        </SimpleGrid>
+        <>
+          {/* Paginated grid */}
+          <SimpleGrid columns={{ base: 1, md: 2 }} spacing={6}>
+            {posts
+              .slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+              .map((post) => (
+                <PostCard key={post.id} post={post} />
+              ))}
+          </SimpleGrid>
+
+          {/* Truncated Pagination controls */}
+          {totalDocs > PAGE_SIZE && (
+            <HStack spacing={2} justifyContent="center" mt={6}>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setPage((p) => Math.max(1, p - 1));
+                  fetchPage(page - 1);
+                }}
+                isDisabled={page === 1 || isLoading}
+              >
+                Prev
+              </Button>
+
+              {(() => {
+                const totalPages = Math.ceil(totalDocs / PAGE_SIZE);
+                const pageNumbers = [];
+
+                // Always show first page
+                if (page > 3) pageNumbers.push(1);
+                if (page > 4) pageNumbers.push("...");
+
+                // Show pages around current page
+                for (
+                  let i = Math.max(1, page - 2);
+                  i <= Math.min(totalPages, page + 2);
+                  i++
+                ) {
+                  pageNumbers.push(i);
+                }
+
+                // Always show last page
+                if (page < totalPages - 3) pageNumbers.push("...");
+                if (page < totalPages - 2) pageNumbers.push(totalPages);
+
+                return pageNumbers.map((pageNum, index) => {
+                  if (pageNum === "...") {
+                    return (
+                      <Text key={`ellipsis-${index}`} color="gray.500">
+                        ...
+                      </Text>
+                    );
+                  }
+                  return (
+                    <Button
+                      key={pageNum}
+                      size="sm"
+                      variant={pageNum === page ? "solid" : "outline"}
+                      colorScheme={pageNum === page ? "blue" : "gray"}
+                      onClick={() => {
+                        setPage(pageNum);
+                        fetchPage(pageNum);
+                      }}
+                      isDisabled={isLoading}
+                    >
+                      {pageNum}
+                    </Button>
+                  );
+                });
+              })()}
+
+              <Button
+                size="sm"
+                onClick={() => {
+                  setPage((p) => p + 1);
+                  fetchPage(page + 1, lastVisible);
+                }}
+                isDisabled={
+                  page === Math.ceil(totalDocs / PAGE_SIZE) || isLoading
+                }
+              >
+                Next
+              </Button>
+            </HStack>
+          )}
+
+          {isLoading && (
+            <Box textAlign="center" mt={4}>
+              <Text color="gray.500">Loading...</Text>
+            </Box>
+          )}
+        </>
       )}
     </Container>
   );
